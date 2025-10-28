@@ -36,6 +36,7 @@ import AnularTraslados from "./components/traslados/AnularTraslados.vue";
 import AnularVenta from "./components/AnularVenta.vue";
 import MovimientoArticulo from "./components/MovimientoArticulo.vue";
 import CategoriasVendidas from "./components/CategoriasVendidas.vue";
+import ConsultaInventarioCategoria from "./components/ConsultaInventarioCategoria.vue";
 
 
 //import HelloWordl from "./components/HelloWordl.vue";
@@ -287,6 +288,14 @@ var router = new Router({
             path: "/consultainventarioagotado",
             name: "consultainventarioagotado",
             component: ConsultaInventarioAgotado,
+            meta: {
+                administrador: true,
+            },
+        },
+        {
+            path: "/consultainventarioCategoria",
+            name: "consultainventariocategoria",
+            component: ConsultaInventarioCategoria,
             meta: {
                 administrador: true,
             },

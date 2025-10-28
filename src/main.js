@@ -47,7 +47,7 @@ Vue.filter('toCurrency', function(value) {
 
 Vue.use(require("vue-moment"));
 Vue.config.productionTip = false;
-axios.defaults.baseURL = "http://kvanegas98-001-site1.gtempurl.com/";
+axios.defaults.baseURL = "https://kvanegas98-001-site1.gtempurl.com/";
 // axios.defaults.baseURL = "https://localhost:44388/";
 
 new Vue({
