@@ -132,10 +132,57 @@
               <v-btn  v-if="!isMobile" @click="imprimir()">
                 <v-icon>print</v-icon>
               </v-btn>
-              <v-btn v-if="isMobile" @click="generatePDF()">
-                <v-icon>print</v-icon>
+              <v-btn v-if="isMobile" @click="printBluetoothAbono()" color="teal" dark>
+                <v-icon left>bluetooth</v-icon> Imprimir Ticket
               </v-btn>
-  <div id="ticket">
+
+              <!-- PREVIEW ESTÉTICO PARA MÓVIL (ABONOS) -->
+              <div v-if="isMobile" class="mobile-ticket-preview mt-3">
+                <v-card flat class="pa-3 text-xs-center" style="background: #fbfbfb; border: 1px dashed #ccc; border-radius: 8px;">
+                  <img src="@/assets/logo.png" alt="Logo" style="max-height: 70px; margin-bottom: 8px;">
+                  <h3 class="mb-0 font-weight-bold" style="font-size: 18px; color: #333;" v-if="deudaInicial == 0">CANCELACION</h3>
+                  <h3 class="mb-0 font-weight-bold" style="font-size: 18px; color: #333;" v-else>RECIBO DE ABONO</h3>
+                  
+                  <div class="grey--text text--darken-1 mb-2" style="font-size: 14px;">NO. {{ num_factura }}</div>
+                  
+                  <v-divider class="my-2"></v-divider>
+                  
+                  <div class="text-xs-left px-2">
+                    <div style="font-size: 14px; color: #444;"><strong>Cliente:</strong> {{ nombreCliente }}</div>
+                    <div style="font-size: 13px; color: #666;"><strong>Fecha:</strong> {{ Fecha | moment("DD/MM/YYYY") }} | {{ Fecha | moment("LT") }}</div>
+                  </div>
+                  
+                  <v-divider class="my-2"></v-divider>
+                  
+                  <div class="text-xs-left px-2">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 14px; color: #555;">
+                      <span>Total Deuda:</span>
+                      <span v-if="deudaInicial > 0">{{ deudaInicial | currency }}</span>
+                      <span v-else>{{ totalabonado | currency }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 14px; color: #555;">
+                      <span>Total Abonado:</span>
+                      <span>{{ totalabonado | currency }}</span>
+                    </div>
+                  </div>
+                  
+                  <v-divider class="my-2"></v-divider>
+
+                  <div class="text-xs-right px-2 mt-2">
+                    <div style="font-size: 15px; color: #333;">Abono Actual: <span class="font-weight-bold">{{ Monto | currency }}</span></div>
+                    <div class="red--text text--darken-2 font-weight-bold mt-1" style="font-size: 16px;">
+                      Saldo Pendiente: {{ pendiente | currency }}
+                    </div>
+                  </div>
+                  
+                  <v-divider class="my-3"></v-divider>
+                  <div class="grey--text text--darken-1" style="font-size: 12px;">Atendido por: {{ nombreVendedor }}</div>
+                  <div class="mt-2 font-weight-bold" style="font-size: 15px; color: #333;">Gracias por su pago</div>
+                </v-card>
+              </div>
+
+              <!-- VIEW DE DESKTOP (impresión real por window.print) -->
+              <div id="ticket" v-show="!isMobile">
                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-beta/css/materialize.min.css" media="print">
                
                 <div id="logo"> 
@@ -319,6 +366,7 @@
 import axios from "axios";
 import swal from "sweetalert";
 import jsPDF from "jspdf";
+import printerService from "../services/BluetoothPrinterService";
 export default {
   data() {
     
@@ -409,65 +457,38 @@ export default {
     formatCurrency(amount) {
       return `C$ ${new Intl.NumberFormat("es-NI").format(amount)}`;
     },
-    generatePDF() {
+    async printBluetoothAbono() {
+      try {
+        const abonoData = {
+          codigoAbono: this.num_factura,
+          fecha: this.Fecha,
+          nombreCliente: this.nombreCliente,
+          nombreVendedor: this.nombreVendedor,
+          deudaInicial: this.deudaInicial,
+          totalAbonado: this.totalabonado,
+          montoAbono: this.Monto,
+          pendiente: this.pendiente,
+        };
 
-  const pdf = new jsPDF({
-    unit: "mm",
-    format: [58, 297], // Ancho: 58mm, altura dinámica
-  });
+        // Mostrar SweetAlert de carga persistente
+        swal({
+          title: "Imprimiendo...",
+          text: "Enviando datos a la impresora Bluetooth, por favor espere.",
+          icon: "info",
+          buttons: false,
+          closeOnClickOutside: false,
+          closeOnEsc: false,
+        });
 
-  // Configuración inicial
-  pdf.setFont("Helvetica", "normal");
-  pdf.setFontSize(10);
+        // Imprimir vía Bluetooth
+        await printerService.printAbono(abonoData);
 
-  const margin = 5; // Margen izquierdo
-  let y = margin; // Posición vertical inicial
-
-    // Detalles del recibo
-  pdf.setFontSize(10);
-  y += 5;  // Espacio después del texto
-  pdf.text(`No. Abono: ${this.num_factura}`, margin, y);
-  y += 5;
-
-  pdf.text(`Fecha: ${new Date(this.Fecha).toLocaleString()}`, margin, y);
-  y += 5;
-
-  pdf.text(`Cliente: ${this.nombreCliente}`, margin, y);
-  y += 5;
-
-  pdf.text(`Usuario: ${this.nombreVendedor}`, margin, y);
-  y += 8;
-
-  // Detalles de pago
-  pdf.setFontSize(10);
-  pdf.text("Detalles del Pago:", margin, y);
-  
-  y += 5;
-  if (parseFloat(this.totalabonado) !== parseFloat(this.Monto)) {
-  // Si los montos son diferentes, restar deudaInicial - montoAbono
-  const saldoCalculado = parseFloat(this.pendiente) + parseFloat(this.Monto);
-  pdf.text(`Saldo Anterior: ${this.formatCurrency(saldoCalculado)}`, margin, y);
-} else {
-  // Si son iguales, mostrar deudaInicial directamente
-  pdf.text(`Saldo Anterior: ${this.formatCurrency(this.deudaInicial)}`, margin, y);
-}
-y += 5;
-  pdf.text(`Abono: ${this.formatCurrency(this.Monto)}`, margin, y);
-  y += 5;
-
-  pdf.text(`Saldo Pendiente: ${this.formatCurrency(this.pendiente)}`, margin, y);
-  y += 8;
-
-  // Mensaje adicional
-  pdf.setFontSize(10);
-  pdf.text("Gracias por su pago.", margin, y);
-  y += 5;
-
-  pdf.text("Por favor conserve este recibo.", margin, y);
-
-  // Descargar el PDF
-  pdf.save(`recibo-${this.num_factura}.pdf`);
-},
+        swal("Impresión exitosa", "El recibo de abono se imprimió correctamente.", "success");
+      } catch (error) {
+        console.error("Error al imprimir abono Bluetooth:", error);
+        swal("Error de impresión", error.message || "No se pudo imprimir el recibo.", "error");
+      }
+    },
     redirigir() {
       // this.$router.push({ name: "login" });
       this.$store.dispatch("salir");

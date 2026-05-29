@@ -140,11 +140,62 @@
                 <v-icon>print</v-icon>
               </v-btn>
 
-              <v-btn v-if="isMobile" @click="generateInvoicePDF()">
-                <v-icon>print</v-icon>
+              <v-btn v-if="isMobile" @click="printBluetoothTicket()" color="teal" dark>
+                <v-icon left>bluetooth</v-icon> Imprimir Ticket
               </v-btn>
               
-              <div id="ticket">
+              <!-- PREVIEW ESTÉTICO PARA MÓVIL -->
+              <div v-if="isMobile" class="mobile-ticket-preview mt-3">
+                <v-card flat class="pa-3 text-xs-center" style="background: #fbfbfb; border: 1px dashed #ccc; border-radius: 8px;">
+                  <img src="@/assets/logo.png" alt="Logo" style="max-height: 70px; margin-bottom: 8px;">
+                  <h3 class="mb-0 font-weight-bold" style="font-size: 18px; color: #333;">FACTURA {{ tipo_comprobante }}</h3>
+                  <div class="grey--text text--darken-1 mb-2" style="font-size: 14px;">NO. {{ num_factura }}</div>
+                  
+                  <v-divider class="my-2"></v-divider>
+                  
+                  <div class="text-xs-left px-2">
+                    <div style="font-size: 14px; color: #444;"><strong>Cliente:</strong> {{ cliente }}</div>
+                    <div style="font-size: 13px; color: #666;"><strong>Fecha:</strong> {{ fecha_hora | moment("DD/MM/YYYY") }} | {{ fecha_hora | moment("LT") }}</div>
+                    <div style="font-size: 13px; color: #666;" v-if="num_documento"><strong>Doc:</strong> {{ num_documento }}</div>
+                  </div>
+                  
+                  <v-divider class="my-2"></v-divider>
+                  
+                  <div class="text-xs-left px-2">
+                    <div v-for="det in detalles" :key="det.iddetalle_venta" class="mb-3">
+                      <div class="font-weight-bold" style="font-size: 14px; color: #222;">{{ det.articulo }}</div>
+                      <div style="display: flex; justify-content: space-between; font-size: 13px; color: #555;">
+                        <span>{{ det.cantidad }} x {{ det.precio.toFixed(2) }}</span>
+                        <span class="font-weight-bold" style="color: #000;">{{ (det.cantidad * det.precio - det.descuento).toFixed(2) | currency }}</span>
+                      </div>
+                      <div v-if="det.descuento > 0" class="red--text text-xs-right" style="font-size: 12px;">
+                        Desc: -{{ det.descuento.toFixed(2) }}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <v-divider class="my-3"></v-divider>
+                  
+                  <div class="text-xs-right px-2">
+                    <div style="font-size: 13px; color: #555;">Subtotal: {{ calcularTotal.toFixed(2) | currency }}</div>
+                    <div style="font-size: 13px; color: #555;" v-if="impuesto > 0">Envío: {{ impuesto | currency }}</div>
+                    
+                    <div class="green--text text--darken-2 font-weight-bold mt-2" style="font-size: 14px;">
+                      Eq. Dólares: {{ ( (parseFloat(impuesto) + calcularTotal) / parseFloat(tasaCambio || tasacambio || 1) ) | toCurrency }}
+                    </div>
+                    <div class="font-weight-bold mt-1" style="font-size: 18px; color: #111;">
+                      TOTAL: {{ (parseFloat(impuesto) + calcularTotal).toFixed(2) | currency }}
+                    </div>
+                  </div>
+                  
+                  <v-divider class="my-3"></v-divider>
+                  <div class="grey--text text--darken-1" style="font-size: 12px;">Atendido por: {{ vendedor }}</div>
+                  <div class="mt-2 font-weight-bold" style="font-size: 15px; color: #333;">¡GRACIAS POR SU COMPRA!</div>
+                </v-card>
+              </div>
+
+              <!-- VIEW DE DESKTOP (impresión real por window.print) -->
+              <div id="ticket" v-show="!isMobile">
                 <link
                   rel="stylesheet"
                   href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-beta/css/materialize.min.css"
@@ -781,6 +832,7 @@ import axios from "axios";
 import jsPDF from "jspdf";
 import swal from "sweetalert";
 import html2canvas from "html2canvas";
+import printerService from "../services/BluetoothPrinterService";
 export default {
   data() {
     return {
@@ -954,118 +1006,49 @@ export default {
     formatCurrency(amount) {
       return `C$ ${new Intl.NumberFormat("es-NI").format(amount)}`;
     },
-    async generateInvoicePDF() {
-  try {
-    // Verificar que hay detalles de venta
-    if (!this.detalles || this.detalles.length === 0) {
-      console.error("No se encontraron detalles para esta venta.");
-      return;
-    }
+    async printBluetoothTicket() {
+      try {
+        // Verificar que hay detalles de venta
+        if (!this.detalles || this.detalles.length === 0) {
+          swal("Sin datos", "No se encontraron detalles para esta venta.", "warning");
+          return;
+        }
 
-    // Datos del encabezado de la factura
-    const data = {
-      codigoFactura: this.num_factura,
-      fecha: this.fecha_hora,
-      nombreCliente: this.cliente,
-      tipoFactura: this.tipo_comprobante,
-      usuario: this.vendedor,
-      total: this.total,
-      impuesto: this.impuesto,
-      items: this.detalles,
-    };
+        // Datos para el ticket
+        const saleData = {
+          codigoFactura: this.num_factura,
+          fecha: this.fecha_hora,
+          nombreCliente: this.cliente,
+          tipoFactura: this.tipo_comprobante,
+          vendedor: this.vendedor,
+          total: this.total,
+          impuesto: this.impuesto,
+          documento: this.num_documento,
+          direccion: this.direccion,
+          telefono: this.telefono,
+          items: this.detalles,
+          tasaCambio: this.tasaCambio || this.tasacambio || 1,
+        };
 
-    // Crear el PDF con tamaño de ticket (58mm de ancho, altura flexible)
-    const pdf = new jsPDF({
-      unit: "mm",
-      format: [58, 297], // Ancho fijo 58mm, largo dinámico
-    });
+        // Mostrar SweetAlert de carga persistente
+        swal({
+          title: "Imprimiendo...",
+          text: "Enviando datos a la impresora Bluetooth, por favor espere.",
+          icon: "info",
+          buttons: false,
+          closeOnClickOutside: false,
+          closeOnEsc: false,
+        });
 
-    const margin = 2; // Margen izquierdo
-    let y = margin; // Posición vertical inicial
+        // Imprimir vía Bluetooth
+        await printerService.printInvoice(saleData);
 
-    pdf.setFont("Courier", "normal"); // Fuente monoespaciada
-    pdf.setFontSize(8); // Reducir tamaño de fuente para mejorar ajuste
-
-    // 📝 **Encabezado de la factura**
-    pdf.setFontSize(10);
-    y += 5;
-    pdf.text(`FACTURA ${data.tipoFactura}`, 29, y, { align: "center" });
-    y += 5;
-
-    pdf.setFontSize(8);
-    pdf.text(`Factura No: ${data.codigoFactura}`, margin, y);
-    y += 5;
-
-    pdf.text(`Cliente: ${data.nombreCliente}`, margin, y);
-    y += 5;
-
-    pdf.text(`Fecha: ${new Date(data.fecha).toLocaleString()}`, margin, y);
-    y += 5;
-
-    pdf.text(`Vendedor: ${data.usuario}`, margin, y);
-    y += 8;
-
-    // 🛒 **Encabezado de la tabla de productos**
-    pdf.setFontSize(7);
-    pdf.text("Codigo     Cant    Precio    Total", margin, y);
-    y += 5;
-    pdf.line(margin, y, 56, y); // Línea separadora
-    y += 3;
-
-    let subtotal = 0;
-    let descuento = 0;
-    let totalUnidades = 0;
-
-    // 🛍️ **Detalles de la compra**
-    data.items.forEach((item) => {
-      // 🔹 **Forzar longitud de columnas** para que siempre se alineen
-      const codigo = item.codigo.padEnd(10, " ").substring(0, 10); // Máximo 10 caracteres
-      const cantidad = item.cantidad.toString().padStart(3, " ");  // 3 caracteres mínimo
-      const precio = this.formatCurrency(item.precio).padStart(8, " "); // 6 caracteres mínimo
-      const totalItem = this.formatCurrency(item.cantidad * item.precio).padStart(10, " "); // 6 caracteres mínimo
-
-      pdf.text(`${codigo} ${cantidad} ${precio} ${totalItem}`, margin, y);
-      y += 4;
-
-      subtotal += item.cantidad * item.precio;
-      descuento += item.descuento || 0;
-      totalUnidades += parseInt(item.cantidad);
-    });
-
-    y += 5;
-    pdf.line(margin, y, 56, y); // Línea horizontal antes de los totales
-    y += 5;
-    pdf.text(`Total Unidades: ${totalUnidades}`, margin, y);
-    y += 5;
-    // 📊 **Totales**
-    pdf.text(`Subtotal: ${this.formatCurrency(subtotal)}`, margin, y);
-    y += 5;
-
-    if (descuento > 0) {
-      pdf.text(`Descuento: -${this.formatCurrency(descuento)}`, margin, y);
-      y += 5;
-    }
-
-    if (data.impuesto > 0) {
-      pdf.text(`Envio: ${this.formatCurrency(data.impuesto)}`, margin, y);
-      y += 5;
-    }
-
-    pdf.text(`Total: ${this.formatCurrency(data.total)}`, margin, y);
-    y += 8;
-
-    // 🏁 **Mensaje final**
-    pdf.text("Gracias por su compra.", 29, y, { align: "center" });
-    y += 5;
-    pdf.text("Por favor conserve esta factura.", 29, y, { align: "center" });
-
-    // 💾 **Guardar PDF**
-    pdf.save(`factura-${data.codigoFactura}.pdf`);
-
-  } catch (error) {
-    console.error("Error al generar la factura:", error);
-  }
-},
+        swal("Impresión exitosa", "El ticket se imprimió correctamente.", "success");
+      } catch (error) {
+        console.error("Error al imprimir ticket Bluetooth:", error);
+        swal("Error de impresión", error.message || "No se pudo imprimir el ticket.", "error");
+      }
+    },
 
     onChange: function (event) {
       console.log(this.selectedValue);
