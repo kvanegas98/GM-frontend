@@ -133,16 +133,23 @@
             </v-card-actions>
           </v-card>
         </v-dialog>
-        <v-dialog v-model="comprobanteModal" max-width="500px">
+        <v-dialog v-model="comprobanteModal" max-width="700px">
           <v-card>
-            <v-card-text>
-              <v-btn v-if="!isMobile" @click="imprimir()">
-                <v-icon>print</v-icon>
+            <v-toolbar flat color="white" style="border-bottom: 1px solid #e0e0e0;">
+              <v-toolbar-title class="font-weight-bold body-1">
+                <v-icon color="blue darken-2" small class="mr-1">receipt</v-icon>
+                Factura {{ num_factura }}
+              </v-toolbar-title>
+              <v-spacer></v-spacer>
+              <v-btn v-if="!isMobile" color="blue darken-2" dark small @click="imprimir()" class="mr-1">
+                <v-icon left small>print</v-icon> Imprimir
               </v-btn>
-
-              <v-btn v-if="isMobile" @click="printBluetoothTicket()" color="teal" dark>
-                <v-icon left>bluetooth</v-icon> Imprimir Ticket
+              <v-btn v-if="isMobile" color="teal" dark small @click="printBluetoothTicket()" class="mr-1">
+                <v-icon left small>bluetooth</v-icon> Imprimir
               </v-btn>
+              <v-btn icon @click="ocultarComprobante"><v-icon>close</v-icon></v-btn>
+            </v-toolbar>
+            <v-card-text class="pa-0">
               
               <!-- PREVIEW ESTÉTICO PARA MÓVIL -->
               <div v-if="isMobile" class="mobile-ticket-preview mt-3">
@@ -194,8 +201,9 @@
                 </v-card>
               </div>
 
-              <!-- VIEW DE DESKTOP (impresión real por window.print) -->
-              <div id="ticket" v-show="!isMobile">
+              <!-- #ticket oculto en DOM — solo para imprimir() -->
+              <div style="display: none !important; height: 0 !important; overflow: hidden; position: absolute; left: -9999px;">
+                <div id="ticket">
                 <link
                   rel="stylesheet"
                   href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-beta/css/materialize.min.css"
@@ -429,10 +437,87 @@
                     >¡GRACIAS POR SU COMPRA!</strong
                   >
                 </div>
+                </div>
               </div>
-              <v-btn @click="ocultarComprobante" color="blue darken-1" flat
-                >Cancelar</v-btn
-              >
+
+              <!-- Preview visual desktop -->
+              <div v-if="!isMobile" class="desktop-invoice-preview pa-5">
+                <v-layout row align-center class="mb-4">
+                  <v-flex xs4>
+                    <img src="@/assets/logo.png" alt="Gema Moda" style="max-height: 72px;">
+                  </v-flex>
+                  <v-flex xs8 class="text-xs-right">
+                    <div style="font-size: 28px; font-weight: 700; color: #424242;">FACTURA</div>
+                    <div style="font-size: 22px; font-weight: 700;" class="blue--text text--darken-2">#{{ num_factura }}</div>
+                    <v-chip small :color="tipo_comprobante === 'CREDITO' ? 'orange darken-1' : 'green darken-1'" text-color="white" class="mt-1">
+                      {{ tipo_comprobante }}
+                    </v-chip>
+                  </v-flex>
+                </v-layout>
+
+                <v-divider class="mb-4"></v-divider>
+
+                <v-layout row class="mb-4">
+                  <v-flex xs6>
+                    <div class="caption font-weight-bold grey--text text--darken-2 mb-1">CLIENTE</div>
+                    <div class="body-2 font-weight-bold">{{ cliente }}</div>
+                    <div class="body-1 grey--text" v-if="num_documento">Doc: {{ num_documento }}</div>
+                    <div class="body-1 grey--text" v-if="direccion">{{ direccion }}</div>
+                    <div class="body-1 grey--text" v-if="telefono">Tel: {{ telefono }}</div>
+                    <div class="body-1 grey--text" v-if="email">{{ email }}</div>
+                  </v-flex>
+                  <v-flex xs6 class="text-xs-right">
+                    <div class="caption font-weight-bold grey--text text--darken-2 mb-1">FECHA</div>
+                    <div class="body-2 font-weight-bold">{{ fecha_hora | moment("DD/MM/YYYY") }}</div>
+                    <div class="body-1 grey--text">{{ fecha_hora | moment("LT") }}</div>
+                    <div class="caption grey--text mt-3">Atendido por</div>
+                    <div class="body-2">{{ vendedor }}</div>
+                  </v-flex>
+                </v-layout>
+
+                <table class="invoice-preview-table mb-4">
+                  <thead>
+                    <tr>
+                      <th class="text-xs-left">Producto</th>
+                      <th class="text-xs-center">Cant.</th>
+                      <th class="text-xs-right">Precio</th>
+                      <th class="text-xs-right">Desc.</th>
+                      <th class="text-xs-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="det in detalles" :key="det.iddetalle_venta">
+                      <td>{{ det.articulo }}</td>
+                      <td class="text-xs-center">{{ det.cantidad }}</td>
+                      <td class="text-xs-right">{{ det.precio.toFixed(2) | currency }}</td>
+                      <td class="text-xs-right">{{ det.descuento | currency }}</td>
+                      <td class="text-xs-right font-weight-bold">{{ (det.cantidad * det.precio - det.descuento).toFixed(2) | currency }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <v-layout row justify-end>
+                  <v-flex xs5>
+                    <v-layout row justify-space-between class="py-1">
+                      <span class="body-1 grey--text">Subtotal</span>
+                      <span class="body-1">{{ calcularTotal.toFixed(2) | currency }}</span>
+                    </v-layout>
+                    <v-layout row justify-space-between class="py-1" v-if="parseFloat(impuesto) > 0">
+                      <span class="body-1 grey--text">Envío</span>
+                      <span class="body-1">{{ impuesto | currency }}</span>
+                    </v-layout>
+                    <v-layout row justify-space-between class="py-1">
+                      <span class="body-1 green--text text--darken-2">Eq. Dólares</span>
+                      <span class="body-1 green--text text--darken-2">{{ ((parseFloat(impuesto) + calcularTotal) / parseFloat(tasaCambio || tasacambio || 1)) | toCurrency }}</span>
+                    </v-layout>
+                    <v-divider class="my-2"></v-divider>
+                    <v-layout row justify-space-between>
+                      <span class="title font-weight-bold">TOTAL</span>
+                      <span class="title font-weight-bold blue--text text--darken-2">{{ (parseFloat(impuesto) + calcularTotal).toFixed(2) | currency }}</span>
+                    </v-layout>
+                  </v-flex>
+                </v-layout>
+              </div>
             </v-card-text>
           </v-card>
         </v-dialog>
@@ -1888,7 +1973,42 @@ th.precio {
   font-size: 10px;
   text-align: center;
   font-family: Arial, sans-serif;
-  margin-left: 40px;
+}
+
+.desktop-invoice-preview {
+  background: #ffffff;
+}
+
+.invoice-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-preview-table thead tr {
+  background: #f5f5f5;
+}
+
+.invoice-preview-table th {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #616161;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.invoice-preview-table td {
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #212121;
+}
+
+.invoice-preview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.invoice-preview-table tbody tr:hover td {
+  background: #fafafa;
 }
 /* #ticket .precio {
     width: 60px;

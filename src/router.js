@@ -37,6 +37,9 @@ import AnularVenta from "./components/AnularVenta.vue";
 import MovimientoArticulo from "./components/MovimientoArticulo.vue";
 import CategoriasVendidas from "./components/CategoriasVendidas.vue";
 import ConsultaInventarioCategoria from "./components/ConsultaInventarioCategoria.vue";
+import TrasladosEmpresa from "./components/TrasladosEmpresa.vue";
+import TrasladoEmpresaDetalle from "./components/TrasladoEmpresaDetalle.vue";
+import TrasladoEmpresaExcepciones from "./components/TrasladoEmpresaExcepciones.vue";
 
 
 //import HelloWordl from "./components/HelloWordl.vue";
@@ -360,6 +363,34 @@ var router = new Router({
             component: AnularTraslados,
             meta: {
                 administrador: true
+            },
+        },
+
+        {
+            path: "/trasladosempresa",
+            name: "trasladosempresa",
+            component: TrasladosEmpresa,
+            meta: {
+                administrador: true,
+                almacenero: true,
+            },
+        },
+        {
+            path: "/trasladosempresa/detalle/:id",
+            name: "trasladoempresadetalle",
+            component: TrasladoEmpresaDetalle,
+            meta: {
+                administrador: true,
+                almacenero: true,
+            },
+        },
+        {
+            path: "/trasladosempresa/excepciones",
+            name: "trasladoempresaexcepciones",
+            component: TrasladoEmpresaExcepciones,
+            meta: {
+                administrador: true,
+                almacenero: true,
             },
         },
 

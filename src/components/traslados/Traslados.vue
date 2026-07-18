@@ -126,14 +126,24 @@
             </v-card-actions>
           </v-card>
         </v-dialog>
-        <v-dialog v-model="comprobanteModal" max-width="500px">
+        <v-dialog v-model="comprobanteModal" max-width="700px">
           <v-card>
-            <v-card-text>
-              <v-btn @click="imprimir()">
-                <v-icon>print</v-icon>
+            <v-toolbar flat color="white" style="border-bottom: 1px solid #e0e0e0;">
+              <v-toolbar-title class="font-weight-bold body-1">
+                <v-icon color="teal" small class="mr-1">swap_horiz</v-icon>
+                {{ EsVenta ? 'Venta' : 'Traslado' }} {{ consecutivo }}
+              </v-toolbar-title>
+              <v-spacer></v-spacer>
+              <v-btn color="blue darken-2" dark small @click="imprimir()" class="mr-1">
+                <v-icon left small>print</v-icon> Imprimir
               </v-btn>
+              <v-btn icon @click="ocultarComprobante"><v-icon>close</v-icon></v-btn>
+            </v-toolbar>
+            <v-card-text class="pa-0">
 
-              <div id="ticket">
+              <!-- #ticket oculto en DOM — solo para imprimir() -->
+              <div style="display: none !important; height: 0 !important; overflow: hidden; position: absolute; left: -9999px;">
+                <div id="ticket">
                 <link
                   rel="stylesheet"
                   href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-beta/css/materialize.min.css"
@@ -266,9 +276,68 @@
                 >
                 <br /><br />
               </div>
-              <v-btn @click="ocultarComprobante" color="blue darken-1" flat
-                >Cancelar</v-btn
-              >
+              </div>
+
+              <!-- Preview visual desktop -->
+              <div class="desktop-invoice-preview pa-5">
+                <v-layout row align-center class="mb-4">
+                  <v-flex xs4>
+                    <img src="@/assets/logo.png" alt="Gema Moda" style="max-height: 72px;">
+                  </v-flex>
+                  <v-flex xs8 class="text-xs-right">
+                    <div style="font-size: 24px; font-weight: 700; color: #424242;">{{ EsVenta ? 'VENTA' : 'TRASLADO' }}</div>
+                    <div style="font-size: 20px; font-weight: 700;" class="teal--text">#{{ consecutivo }}</div>
+                  </v-flex>
+                </v-layout>
+
+                <v-divider class="mb-4"></v-divider>
+
+                <v-layout row class="mb-4">
+                  <v-flex xs6>
+                    <div class="caption font-weight-bold grey--text text--darken-2 mb-1">ORIGEN</div>
+                    <div class="body-2 font-weight-bold">{{ NombreBodegaSalida }}</div>
+                    <div class="caption font-weight-bold grey--text text--darken-2 mt-3 mb-1">DESTINO</div>
+                    <div class="body-2 font-weight-bold">{{ NombreBodegaEntrada }}</div>
+                  </v-flex>
+                  <v-flex xs6 class="text-xs-right">
+                    <div class="caption font-weight-bold grey--text text--darken-2 mb-1">FECHA</div>
+                    <div class="body-2 font-weight-bold">{{ fecha_hora | moment("DD/MM/YYYY") }}</div>
+                    <div class="body-1 grey--text">{{ fecha_hora | moment("LT") }}</div>
+                    <div class="caption grey--text mt-3">Realizado por</div>
+                    <div class="body-2">{{ usuario }}</div>
+                  </v-flex>
+                </v-layout>
+
+                <table class="invoice-preview-table mb-4">
+                  <thead>
+                    <tr>
+                      <th class="text-xs-left">Producto</th>
+                      <th class="text-xs-center">Cant.</th>
+                      <th v-if="EsVenta" class="text-xs-right">Precio</th>
+                      <th v-if="EsVenta" class="text-xs-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="det in detalles" :key="det.iddetalle_venta">
+                      <td>{{ det.articulo }}</td>
+                      <td class="text-xs-center">{{ det.cantidad }}</td>
+                      <td v-if="EsVenta" class="text-xs-right">{{ det.precio | currency }}</td>
+                      <td v-if="EsVenta" class="text-xs-right font-weight-bold">{{ (det.cantidad * det.precio).toFixed(2) | currency }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <v-layout row justify-end v-if="EsVenta">
+                  <v-flex xs5>
+                    <v-divider class="my-2"></v-divider>
+                    <v-layout row justify-space-between>
+                      <span class="title font-weight-bold">TOTAL</span>
+                      <span class="title font-weight-bold teal--text">{{ calcularTotal.toFixed(2) | currency }}</span>
+                    </v-layout>
+                  </v-flex>
+                </v-layout>
+              </div>
+
             </v-card-text>
           </v-card>
         </v-dialog>
@@ -694,8 +763,6 @@ export default {
       this.usuario = item.userName;
       this.fecha_hora = item.fecha;
       this.listarDetalles(item.id);
-      this.verNuevo = 1;
-      this.verDet = 1;
       this.comprobanteModal = 1;
     },
     ocultarComprobante() {
@@ -1313,5 +1380,33 @@ img {
   .oculto-impresion * {
     display: none !important;
   }
+}
+
+.desktop-invoice-preview {
+  background: #ffffff;
+}
+
+.invoice-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-preview-table thead tr {
+  background: #f5f5f5;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.invoice-preview-table th,
+.invoice-preview-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.invoice-preview-table tbody tr {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.invoice-preview-table tbody tr:hover {
+  background: #fafafa;
 }
 </style>

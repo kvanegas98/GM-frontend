@@ -3,24 +3,28 @@
     <v-flex>
       <v-toolbar flat color="white">
         <v-toolbar-title>Artículos</v-toolbar-title>
-        <v-divider class="mx-2" inset vertical></v-divider>
+        <v-divider v-if="!$vuetify.breakpoint.smAndDown" class="mx-2" inset vertical></v-divider>
         <v-spacer></v-spacer>
         <v-text-field
+          v-if="!$vuetify.breakpoint.smAndDown"
           class="text-xs-center"
           v-model="search"
           append-icon="search"
           label="Búsqueda"
           single-line
           hide-details
+          clearable
+          @keyup.enter="buscar"
+          @click:append="buscar"
+          @input="buscarDebounce"
         ></v-text-field>
-        <v-spacer></v-spacer>
-        <v-flex xs4 sm4 md4>
+        <v-flex v-if="!$vuetify.breakpoint.smAndDown" xs4 sm4 md4 class="ml-2">
           <v-select
             v-model="categoria"
             :items="categorys"
             label="Categoría"
             autocomplete="on"
-            v-on:change="listar"
+            v-on:change="buscar"
           >
           </v-select>
         </v-flex>
@@ -160,10 +164,96 @@
           </v-card>
         </v-dialog>
       </v-toolbar>
+
+      <!-- Búsqueda móvil -->
+      <v-card v-if="$vuetify.breakpoint.smAndDown" flat class="elevation-1 px-2 pb-1">
+        <v-layout row align-center>
+          <v-flex xs7>
+            <v-text-field
+              v-model="search"
+              prepend-icon="search"
+              label="Buscar artículo"
+              single-line
+              hide-details
+              clearable
+              @keyup.enter="buscar"
+              @click:prepend="buscar"
+              @input="buscarDebounce"
+            ></v-text-field>
+          </v-flex>
+          <v-flex xs5 class="pl-2">
+            <v-select
+              v-model="categoria"
+              :items="categorys"
+              label="Categoría"
+              hide-details
+              v-on:change="buscar"
+            ></v-select>
+          </v-flex>
+        </v-layout>
+      </v-card>
+
+      <!-- Vista móvil -->
+      <template v-if="$vuetify.breakpoint.smAndDown">
+        <v-progress-linear v-if="cargando" indeterminate color="primary" class="ma-0"></v-progress-linear>
+        <v-layout row wrap class="pa-1">
+          <v-flex xs12 v-for="item in articulos" :key="item.idarticulo" class="pa-1">
+            <v-card class="elevation-2">
+              <v-card-text class="py-2 px-3">
+                <v-layout row align-center>
+                  <v-flex>
+                    <div class="body-2 font-weight-bold">{{ item.nombre }}</div>
+                    <div class="caption grey--text">{{ item.codigo }} &middot; {{ item.categoria }}</div>
+                  </v-flex>
+                  <v-flex shrink>
+                    <v-chip small label
+                      :color="item.condicion ? 'blue lighten-4' : 'red lighten-4'"
+                      :text-color="item.condicion ? 'blue darken-3' : 'red darken-3'">
+                      {{ item.condicion ? 'Activo' : 'Inactivo' }}
+                    </v-chip>
+                  </v-flex>
+                </v-layout>
+                <v-divider class="my-1"></v-divider>
+                <v-layout row align-center>
+                  <v-flex>
+                    <div class="caption grey--text">Compra</div>
+                    <div class="body-2 font-weight-bold">{{ item.precio_compra | currency }}</div>
+                  </v-flex>
+                  <v-flex>
+                    <div class="caption grey--text">Venta</div>
+                    <div class="body-2 font-weight-bold">{{ item.precio_venta | currency }}</div>
+                  </v-flex>
+                  <v-flex shrink>
+                    <v-icon small color="teal" @click="mostrarStock(item)">inventory</v-icon>
+                    <v-icon v-if="esAdministrador" small color="primary" class="ml-1" @click="showInvoiceByArticle(item)">receipt</v-icon>
+                    <v-icon v-if="esAdministrador2" small class="ml-1" @click="editItem(item)">edit</v-icon>
+                    <v-icon v-if="item.condicion && esAdministrador2" small class="ml-1" @click="activarDesactivarMostrar(2, item)">block</v-icon>
+                    <v-icon v-if="!item.condicion && esAdministrador2" small class="ml-1" @click="activarDesactivarMostrar(1, item)">check</v-icon>
+                  </v-flex>
+                </v-layout>
+              </v-card-text>
+            </v-card>
+          </v-flex>
+        </v-layout>
+        <div v-if="!articulos.length && !cargando" class="text-xs-center pa-4 grey--text body-1">Sin resultados</div>
+        <v-layout justify-center class="py-2">
+          <v-pagination
+            v-model="paginacion.page"
+            :length="Math.ceil(totalItems / paginacion.rowsPerPage) || 1"
+            :total-visible="5"
+          ></v-pagination>
+        </v-layout>
+      </template>
+
+      <!-- Vista escritorio -->
+      <div v-if="!$vuetify.breakpoint.smAndDown" class="table-scroll-wrapper">
       <v-data-table
         :headers="filteredHeaders"
         :items="articulos"
-        :search="search"
+        :total-items="totalItems"
+        :pagination.sync="paginacion"
+        :loading="cargando"
+        :rows-per-page-items="[10, 20, 50]"
         class="elevation-1"
       >
         <template slot="items" slot-scope="props">
@@ -230,69 +320,90 @@
           <v-btn color="primary" @click="listar">Resetear</v-btn>
         </template>
       </v-data-table>
+      </div>
     </v-flex>
 
-    <v-dialog v-model="dialogStock" max-width="500px">
+    <v-dialog v-model="dialogStock" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="500px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Cantidad de articulo por sucursal </span>
-        </v-card-title>
-
+        <v-toolbar flat color="teal" dark>
+          <v-btn icon dark @click.native="closeStock"><v-icon>arrow_back</v-icon></v-btn>
+          <v-toolbar-title>Stock por Sucursal</v-toolbar-title>
+        </v-toolbar>
         <v-data-table :headers="tbStock" :items="_stock" class="elevation-1">
           <template slot="items" slot-scope="props">
-            <!-- <td>{{ props.item.id_Credito }}</td> -->
             <td>{{ props.item.sucursal }}</td>
             <td>{{ props.item.stock }}</td>
           </template>
-          <!-- <template slot="no-data">
-          <v-btn color="primary" @click="listar">Resetear</v-btn>
-        </template> -->
         </v-data-table>
-
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeStock"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeStock">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- ver Detalle de factura -->
-    <v-dialog v-model="dialogInvoice" max-width="1200px">
+    <v-dialog v-model="dialogInvoice" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="1200px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Cantidad de articulo por factura </span>
-        </v-card-title>
-
-        <v-data-table
-          :headers="tbInvoices"
-          :items="invoices"
-          class="elevation-1"
-        >
-          <template slot="items" slot-scope="props">
-            <td>{{ props.item.usuarioNombre }}</td>
-            <td>{{ props.item.articuloCodigo }}</td>
-            <td>{{ props.item.ventaCodigoFactura }}</td>
-            <td>
-              {{ props.item.fechaHora | moment("DD/MM/YYYY") }} |
-              {{ props.item.fechaHora | moment("LT") }}
-            </td>
-            <td>{{ props.item.sucursalNombre }}</td>
-            <td>{{ props.item.detalleVentaCantidad }}</td>
-            <td>{{ props.item.subtotal }}</td>
-            <td>{{ props.item.detalleVentaDescuento }}</td>
-            <td>{{ props.item.total }}</td>
-          </template>
-        </v-data-table>
-
+        <v-toolbar flat color="blue darken-2" dark>
+          <v-btn icon dark @click.native="closeInvoice"><v-icon>arrow_back</v-icon></v-btn>
+          <v-toolbar-title>Facturas del Artículo</v-toolbar-title>
+        </v-toolbar>
+        <!-- Mobile cards -->
+        <div v-if="$vuetify.breakpoint.smAndDown" class="pa-2">
+          <v-card v-for="(item, i) in invoices" :key="i" class="mb-2 elevation-1">
+            <v-card-text class="py-2 px-3">
+              <v-layout row align-center>
+                <div class="body-2 font-weight-bold">{{ item.usuarioNombre }}</div>
+                <v-spacer></v-spacer>
+                <span class="caption font-weight-bold blue--text">Factura #{{ item.ventaCodigoFactura }}</span>
+              </v-layout>
+              <div class="caption grey--text">{{ item.articuloCodigo }} · {{ item.sucursalNombre }}</div>
+              <div class="caption grey--text">{{ item.fechaHora | moment("DD/MM/YYYY") }} {{ item.fechaHora | moment("LT") }}</div>
+              <v-divider class="my-1"></v-divider>
+              <v-layout row>
+                <v-flex>
+                  <div class="caption grey--text">Cant.</div>
+                  <div class="body-2">{{ item.detalleVentaCantidad }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">SubTotal</div>
+                  <div class="body-2">{{ item.subtotal }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Desc.</div>
+                  <div class="body-2">{{ item.detalleVentaDescuento }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Total</div>
+                  <div class="body-2 font-weight-bold">{{ item.total }}</div>
+                </v-flex>
+              </v-layout>
+            </v-card-text>
+          </v-card>
+          <div v-if="!invoices.length" class="text-xs-center py-4 grey--text">Sin registros</div>
+        </div>
+        <!-- Desktop table -->
+        <div v-else class="dialog-table-scroll">
+          <v-data-table :headers="tbInvoices" :items="invoices" class="elevation-1">
+            <template slot="items" slot-scope="props">
+              <td>{{ props.item.usuarioNombre }}</td>
+              <td>{{ props.item.articuloCodigo }}</td>
+              <td>{{ props.item.ventaCodigoFactura }}</td>
+              <td>{{ props.item.fechaHora | moment("DD/MM/YYYY") }} | {{ props.item.fechaHora | moment("LT") }}</td>
+              <td>{{ props.item.sucursalNombre }}</td>
+              <td>{{ props.item.detalleVentaCantidad }}</td>
+              <td>{{ props.item.subtotal }}</td>
+              <td>{{ props.item.detalleVentaDescuento }}</td>
+              <td>{{ props.item.total }}</td>
+            </template>
+          </v-data-table>
+        </div>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeInvoice"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeInvoice">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -300,6 +411,10 @@
   </v-layout>
 </template>
 <style>
+.dialog-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .no-spinners input::-webkit-outer-spin-button,
 .no-spinners input::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -319,6 +434,9 @@ export default {
   data() {
     return {
       articulos: [],
+      totalItems: 0,
+      paginacion: { page: 1, rowsPerPage: 10 },
+      cargando: false,
       _stock: [],
       invoices: [],
       dialogStock: false,
@@ -365,6 +483,7 @@ export default {
       ],
       categoria: 0,
       search: "",
+      debounceTimer: null,
       editedIndex: -1,
       id: "",
       idcategoria: "",
@@ -414,14 +533,12 @@ export default {
   },
 
   watch: {
-    dialog(val) {
-      val || this.close();
-    },
-    dialogStock(val) {
-      val || this.close();
-    },
-    dialogInvoice(val) {
-      val || this.close();
+    dialog(val) { val || this.close(); },
+    dialogStock(val) { val || this.close(); },
+    dialogInvoice(val) { val || this.close(); },
+    'paginacion.page'() { this.listar(); },
+    'paginacion.rowsPerPage'() {
+      if (this.paginacion.page !== 1) { this.paginacion.page = 1; } else { this.listar(); }
     },
   },
 
@@ -580,45 +697,32 @@ export default {
     },
 
     listar() {
-      let me = this;
-      let header = { Authorization: "Bearer " + this.$store.state.token };
-      let configuracion = { headers: header };
-      axios
-        .get("api/Articulos/Listar/" + me.categoria, configuracion)
+      var me = this;
+      me.cargando = true;
+      var params = { pagina: me.paginacion.page, porPagina: me.paginacion.rowsPerPage };
+      if (me.categoria && me.categoria !== 0) params.idCategoria = me.categoria;
+      if (me.search) params.nombre = me.search;
+      var cfg = { headers: { Authorization: 'Bearer ' + me.$store.state.token }, params: params };
+      axios.get('api/Articulos/Buscar', cfg)
         .then(function (response) {
-          //console.log(response);
-          me.articulos = response.data;
-
-          //console.log(me.articulos);
-          me.articulos.map(function (x) {
-            rows.push({
-              nombre: x.nombre,
-              codigo: x.codigo,
-              categoria: x.categoria,
-              stock: x.stock,
-              precio_compra: x.precio_compra,
-              precio_venta: x.precio_venta,
-              utilidad: (x.precio_venta - x.precio_compra) * x.stock,
-              costo: x.precio_compra * x.stock,
-            });
-          });
+          me.cargando = false;
+          me.articulos = response.data.articulos || [];
+          me.totalItems = response.data.total || 0;
         })
         .catch(function (error) {
-          // console.log(error);
-          console.log("Probando" + error.response.status);
-          if (error.response.status == "401") {
-            //alert("Nice");
-            swal(
-              "Sesión caducada",
-              "Su sesión ha expirado favor volver a iniciar sesión",
-              "warning"
-            );
+          me.cargando = false;
+          if (error.response && error.response.status == '401') {
+            swal('Sesión caducada', 'Su sesión ha expirado favor volver a iniciar sesión', 'warning');
             me.redirigir();
-
-            //router.push("login");
-            // ation.href = "http://localhost8080/login";
           }
         });
+    },
+    buscarDebounce() {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => { this.buscar(); }, 400);
+    },
+    buscar() {
+      if (this.paginacion.page !== 1) { this.paginacion.page = 1; } else { this.listar(); }
     },
     redirigir() {
       // this.$router.push({ name: "login" });
@@ -864,3 +968,9 @@ export default {
   },
 };
 </script>
+<style scoped>
+.table-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+</style>

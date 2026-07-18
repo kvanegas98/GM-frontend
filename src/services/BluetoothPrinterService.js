@@ -533,6 +533,120 @@ BluetoothPrinterService.prototype.printAbono = function(abonoData) {
   return doPrint();
 };
 
+/**
+ * Imprime un comprobante de traslado entre empresas.
+ *
+ * @param {Object} data - Datos del traslado
+ */
+BluetoothPrinterService.prototype.printTraslado = function(data) {
+  var self = this;
+  var fmt = this._fmt;
+  var fechaStr = this._formatDate(data.fecha);
+  var SEP = '================================================';
+  var LINE = '------------------------------------------------';
+
+  function doPrint() {
+    var cmds = [];
+
+    cmds.push(EscPos.init());
+    cmds.push(EscPos.align('center'));
+    cmds.push(EscPos.line(' * * * * * * * * * * * * * * * * * * * * * * * '));
+    cmds.push(EscPos.feed(1));
+    cmds.push(EscPos.bold(true));
+    cmds.push(EscPos.textSize(3, 3));
+    cmds.push(EscPos.line('GEMA MODA'));
+    cmds.push(EscPos.textSize(1, 1));
+    cmds.push(EscPos.bold(false));
+    cmds.push(EscPos.feed(1));
+    cmds.push(EscPos.line(' * * * * * * * * * * * * * * * * * * * * * * * '));
+
+    cmds.push(EscPos.bold(true));
+    cmds.push(EscPos.textSize(1, 2));
+    cmds.push(EscPos.line('TRASLADO ENTRE EMPRESAS'));
+    cmds.push(EscPos.textSize(1, 1));
+    cmds.push(EscPos.bold(false));
+    cmds.push(EscPos.line(SEP));
+
+    cmds.push(EscPos.align('left'));
+    cmds.push(EscPos.line('No: ' + (data.numeroTraslado || '---')));
+    cmds.push(EscPos.line('Fecha: ' + fechaStr));
+
+    var tipoStr = data.rol === 'saliente'
+      ? 'SALIENTE  (Gema a Zona)'
+      : 'ENTRANTE  (Zona a Gema)';
+    cmds.push(EscPos.line('Tipo: ' + tipoStr));
+    cmds.push(EscPos.line('Sucursal: ' + (data.sucursalNombre || '')));
+    cmds.push(EscPos.line(LINE));
+
+    cmds.push(EscPos.bold(true));
+    cmds.push(EscPos.line('Cant  Producto                   Precio'));
+    cmds.push(EscPos.bold(false));
+    cmds.push(EscPos.line(LINE));
+
+    var totalUnidades = 0;
+    var totalMonto = 0;
+
+    if (data.detalles && data.detalles.length > 0) {
+      for (var i = 0; i < data.detalles.length; i++) {
+        var item = data.detalles[i];
+        var cant = parseInt(item.cantidad) || 0;
+        var precio = parseFloat(item.precio_venta) || 0;
+        var nombre = (item.nombre_producto || '').substring(0, 26);
+
+        // Pad manual para alinear columnas (48 cols total)
+        var cantStr = String(cant);
+        while (cantStr.length < 6) cantStr += ' ';
+        while (nombre.length < 26) nombre += ' ';
+
+        cmds.push(EscPos.line(cantStr + nombre + fmt(precio)));
+        
+        totalUnidades += cant;
+        totalMonto += cant * precio;
+      }
+    } else {
+      cmds.push(EscPos.line('No hay detalles.'));
+    }
+
+    cmds.push(EscPos.line(SEP));
+    cmds.push(EscPos.line('Total Unidades: ' + totalUnidades));
+    cmds.push(EscPos.line('Monto Total:                 ' + fmt(totalMonto)));
+    cmds.push(EscPos.line(SEP));
+
+    cmds.push(EscPos.align('center'));
+    cmds.push(EscPos.bold(true));
+    cmds.push(EscPos.textSize(1, 2));
+    cmds.push(EscPos.line('Estado: ' + (data.estado || '').toUpperCase()));
+    cmds.push(EscPos.textSize(1, 1));
+    cmds.push(EscPos.bold(false));
+
+    cmds.push(EscPos.align('left'));
+    cmds.push(EscPos.line(LINE));
+    cmds.push(EscPos.line('Usuario: ' + (data.usuario || '')));
+    if (data.nombreUsuario) {
+      cmds.push(EscPos.line('Realizado por: ' + data.nombreUsuario));
+    }
+    if (data.canceladoPor) {
+      cmds.push(EscPos.line('Cancelado por: ' + data.canceladoPor));
+    }
+    cmds.push(EscPos.feed(1));
+
+    cmds.push(EscPos.align('center'));
+    cmds.push(EscPos.bold(true));
+    cmds.push(EscPos.line('COMPROBANTE DE TRASLADO'));
+    cmds.push(EscPos.bold(false));
+    cmds.push(EscPos.line('Conserve este documento.'));
+    cmds.push(EscPos.feed(4));
+
+    var buffer = self._buildBuffer(cmds);
+    return self.sendData(buffer);
+  }
+
+  if (!this.isConnected) {
+    return this.connect().then(doPrint);
+  }
+  return doPrint();
+};
+
 // Exportar una instancia singleton para mantener la conexión
 // entre diferentes componentes de la app
 var printerService = new BluetoothPrinterService();

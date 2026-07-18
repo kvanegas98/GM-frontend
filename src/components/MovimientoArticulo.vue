@@ -3,24 +3,28 @@
     <v-flex>
       <v-toolbar flat color="white">
         <v-toolbar-title>Movimientos de articulos</v-toolbar-title>
-        <v-divider class="mx-2" inset vertical></v-divider>
+        <v-divider v-if="!$vuetify.breakpoint.smAndDown" class="mx-2" inset vertical></v-divider>
         <v-spacer></v-spacer>
         <v-text-field
+          v-if="!$vuetify.breakpoint.smAndDown"
           class="text-xs-center"
           v-model="search"
           append-icon="search"
           label="Búsqueda"
           single-line
           hide-details
+          clearable
+          @keyup.enter="buscar"
+          @click:append="buscar"
+          @input="buscarDebounce"
         ></v-text-field>
-        <v-spacer></v-spacer>
-        <v-flex xs4 sm4 md4>
+        <v-flex v-if="!$vuetify.breakpoint.smAndDown" xs4 sm4 md4 class="ml-2">
           <v-select
             v-model="categoria"
             :items="categorys"
             label="Categoría"
             autocomplete="on"
-            v-on:change="listar"
+            v-on:change="buscar"
           >
           </v-select>
         </v-flex>
@@ -160,10 +164,98 @@
           </v-card>
         </v-dialog>
       </v-toolbar>
+
+      <!-- Búsqueda móvil -->
+      <v-card v-if="$vuetify.breakpoint.smAndDown" flat class="elevation-1 px-2 pb-1">
+        <v-layout row align-center>
+          <v-flex xs7>
+            <v-text-field
+              v-model="search"
+              prepend-icon="search"
+              label="Buscar artículo"
+              single-line
+              hide-details
+              clearable
+              @keyup.enter="buscar"
+              @click:prepend="buscar"
+              @input="buscarDebounce"
+            ></v-text-field>
+          </v-flex>
+          <v-flex xs5 class="pl-2">
+            <v-select
+              v-model="categoria"
+              :items="categorys"
+              label="Categoría"
+              hide-details
+              v-on:change="buscar"
+            ></v-select>
+          </v-flex>
+        </v-layout>
+      </v-card>
+
+      <!-- Vista móvil -->
+      <template v-if="$vuetify.breakpoint.smAndDown">
+        <v-progress-linear v-if="cargando" indeterminate color="primary" class="ma-0"></v-progress-linear>
+        <v-layout row wrap class="pa-1">
+          <v-flex xs12 v-for="item in articulos" :key="item.idarticulo" class="pa-1">
+            <v-card class="elevation-2">
+              <v-card-text class="py-2 px-3">
+                <v-layout row align-center>
+                  <v-flex>
+                    <div class="body-2 font-weight-bold">{{ item.nombre }}</div>
+                    <div class="caption grey--text">{{ item.codigo }} &middot; {{ item.categoria }}</div>
+                  </v-flex>
+                  <v-flex shrink>
+                    <v-chip small label
+                      :color="item.condicion ? 'blue lighten-4' : 'red lighten-4'"
+                      :text-color="item.condicion ? 'blue darken-3' : 'red darken-3'">
+                      {{ item.condicion ? 'Activo' : 'Inactivo' }}
+                    </v-chip>
+                  </v-flex>
+                </v-layout>
+                <v-divider class="my-1"></v-divider>
+                <v-layout row align-center>
+                  <v-flex>
+                    <div class="caption grey--text">Compra</div>
+                    <div class="body-2 font-weight-bold">{{ item.precio_compra | currency }}</div>
+                  </v-flex>
+                  <v-flex>
+                    <div class="caption grey--text">Venta</div>
+                    <div class="body-2 font-weight-bold">{{ item.precio_venta | currency }}</div>
+                  </v-flex>
+                </v-layout>
+                <v-divider class="my-1"></v-divider>
+                <div class="caption grey--text mb-1">Acciones</div>
+                <v-layout row align-center>
+                  <v-icon small color="teal" class="mr-2" @click="mostrarStock(item)">inventory</v-icon>
+                  <v-icon v-if="esAdministrador" small color="primary" class="mr-2" @click="showInvoiceByArticle(item)">request_page</v-icon>
+                  <v-icon v-if="esAdministrador" small color="primary" class="mr-2" @click="showCompraByArticle(item)">shopping_cart</v-icon>
+                  <v-icon v-if="esAdministrador" small color="primary" class="mr-2" @click="showTrasladoByArticle(item)">move_up</v-icon>
+                  <v-icon v-if="esAdministrador" small color="deep-purple" @click="showTrasladoEmpresaByArticle(item)">compare_arrows</v-icon>
+                </v-layout>
+              </v-card-text>
+            </v-card>
+          </v-flex>
+        </v-layout>
+        <div v-if="!articulos.length && !cargando" class="text-xs-center pa-4 grey--text body-1">Sin resultados</div>
+        <v-layout justify-center class="py-2">
+          <v-pagination
+            v-model="paginacion.page"
+            :length="Math.ceil(totalItems / paginacion.rowsPerPage) || 1"
+            :total-visible="5"
+          ></v-pagination>
+        </v-layout>
+      </template>
+
+      <!-- Vista escritorio -->
+      <div v-if="!$vuetify.breakpoint.smAndDown" class="table-scroll-wrapper">
       <v-data-table
         :headers="filteredHeaders"
         :items="articulos"
-        :search="search"
+        :total-items="totalItems"
+        :pagination.sync="paginacion"
+        :loading="cargando"
+        :rows-per-page-items="[10, 20, 50]"
         class="elevation-1"
       >
         <template slot="items" slot-scope="props">
@@ -226,6 +318,16 @@
               move_up
             </v-icon>
           </td>
+          <td v-if="esAdministrador">
+            <v-icon
+              small
+              class="mr-2"
+              color="deep-purple"
+              @click="showTrasladoEmpresaByArticle(props.item)"
+            >
+              compare_arrows
+            </v-icon>
+          </td>
 
           <td>{{ props.item.precio_compra | currency }}</td>
           <td>{{ props.item.precio_venta | currency }}</td>
@@ -246,188 +348,331 @@
           <v-btn color="primary" @click="listar">Resetear</v-btn>
         </template>
       </v-data-table>
+      </div>
     </v-flex>
 
-    <v-dialog v-model="dialogStock" max-width="500px">
+    <v-dialog v-model="dialogStock" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="500px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Cantidad de articulo por sucursal </span>
-        </v-card-title>
-
+        <v-toolbar flat color="teal" dark>
+          <v-btn icon dark @click.native="closeStock"><v-icon>arrow_back</v-icon></v-btn>
+          <v-toolbar-title>Stock por Sucursal</v-toolbar-title>
+        </v-toolbar>
         <v-data-table :headers="tbStock" :items="_stock" class="elevation-1">
           <template slot="items" slot-scope="props">
-            <!-- <td>{{ props.item.id_Credito }}</td> -->
             <td>{{ props.item.sucursal }}</td>
             <td>{{ props.item.stock }}</td>
           </template>
-          <!-- <template slot="no-data">
-          <v-btn color="primary" @click="listar">Resetear</v-btn>
-        </template> -->
         </v-data-table>
-
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeStock"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeStock">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- ver Detalle de factura -->
-    <v-dialog v-model="dialogInvoice" max-width="1200px">
+    <v-dialog v-model="dialogInvoice" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="1200px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Cantidad de articulo por factura </span>
-        </v-card-title>
-
-        <v-data-table
-          :headers="tbInvoices"
-          :items="invoices"
-          class="elevation-1"
-        >
-          <template slot="items" slot-scope="props">
-            <td>{{ props.item.usuarioNombre }}</td>
-            <td>{{ props.item.articuloCodigo }}</td>
-            <td>{{ props.item.ventaCodigoFactura }}</td>
-            <td>
-              {{ props.item.fechaHora | moment("DD/MM/YYYY") }} |
-              {{ props.item.fechaHora | moment("LT") }}
-            </td>
-            <td>{{ props.item.sucursalNombre }}</td>
-            <td>{{ props.item.detalleVentaCantidad }}</td>
-            <td>{{ props.item.subtotal }}</td>
-            <td>{{ props.item.detalleVentaDescuento }}</td>
-            <td>{{ props.item.total }}</td>
-          </template>
-        </v-data-table>
-
+        <v-toolbar flat color="blue darken-2" dark>
+          <v-btn icon dark @click.native="closeInvoice"><v-icon>arrow_back</v-icon></v-btn>
+          <v-toolbar-title>Facturas del Artículo</v-toolbar-title>
+        </v-toolbar>
+        <!-- Mobile cards -->
+        <div v-if="$vuetify.breakpoint.smAndDown" class="pa-2">
+          <v-card v-for="(item, i) in invoices" :key="i" class="mb-2 elevation-1">
+            <v-card-text class="py-2 px-3">
+              <v-layout row align-center>
+                <div class="body-2 font-weight-bold">{{ item.usuarioNombre }}</div>
+                <v-spacer></v-spacer>
+                <span class="caption font-weight-bold blue--text">Factura #{{ item.ventaCodigoFactura }}</span>
+              </v-layout>
+              <div class="caption grey--text">{{ item.articuloCodigo }} · {{ item.sucursalNombre }}</div>
+              <div class="caption grey--text">{{ item.fechaHora | moment("DD/MM/YYYY") }} {{ item.fechaHora | moment("LT") }}</div>
+              <v-divider class="my-1"></v-divider>
+              <v-layout row>
+                <v-flex>
+                  <div class="caption grey--text">Cant.</div>
+                  <div class="body-2">{{ item.detalleVentaCantidad }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">SubTotal</div>
+                  <div class="body-2">{{ item.subtotal }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Desc.</div>
+                  <div class="body-2">{{ item.detalleVentaDescuento }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Total</div>
+                  <div class="body-2 font-weight-bold">{{ item.total }}</div>
+                </v-flex>
+              </v-layout>
+            </v-card-text>
+          </v-card>
+          <div v-if="!invoices.length" class="text-xs-center py-4 grey--text">Sin registros</div>
+        </div>
+        <!-- Desktop table -->
+        <div v-else class="dialog-table-scroll">
+          <v-data-table :headers="tbInvoices" :items="invoices" class="elevation-1">
+            <template slot="items" slot-scope="props">
+              <td>{{ props.item.usuarioNombre }}</td>
+              <td>{{ props.item.articuloCodigo }}</td>
+              <td>{{ props.item.ventaCodigoFactura }}</td>
+              <td>{{ props.item.fechaHora | moment("DD/MM/YYYY") }} | {{ props.item.fechaHora | moment("LT") }}</td>
+              <td>{{ props.item.sucursalNombre }}</td>
+              <td>{{ props.item.detalleVentaCantidad }}</td>
+              <td>{{ props.item.subtotal }}</td>
+              <td>{{ props.item.detalleVentaDescuento }}</td>
+              <td>{{ props.item.total }}</td>
+            </template>
+          </v-data-table>
+        </div>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeInvoice"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeInvoice">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
     <!--  fin ver facturas -->
 
     <!-- ver Detalle de Compra -->
-    <v-dialog v-model="dialogCompra" max-width="1200px">
+    <v-dialog v-model="dialogCompra" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="1200px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Movimientos Compra </span>
-          <br />
-          <v-icon class="mr-2" color="primary"> shopping_cart </v-icon>
-        </v-card-title>
-
-        <!-- <v-data-table :headers="tbCompras" :items="compras" class="elevation-1" :sort-by="[]"> -->
-          <v-data-table :headers="tbCompras" :items="compras" class="elevation-1"   :options="{ sortBy: [] }">
-          <template v-slot:items="props" >
-            
-            <td>{{ props.item.num_comprobante }}</td>
-            <!-- <td>{{ props.item.estado }}</td> -->
-            <div class="text-center">
-              <span v-if="props.item.estado == 'CANCELADO' || props.item.estado == 'Aceptado' ">
-                <v-chip class="ma-2" color="cyan" label text-color="white">
-                  <v-icon left> check_circle </v-icon>
+        <v-toolbar flat color="teal darken-1" dark>
+          <v-btn icon dark @click.native="closeCompra"><v-icon>arrow_back</v-icon></v-btn>
+          <v-icon class="mr-2">shopping_cart</v-icon>
+          <v-toolbar-title>Movimientos de Compra</v-toolbar-title>
+        </v-toolbar>
+        <!-- Mobile cards -->
+        <div v-if="$vuetify.breakpoint.smAndDown" class="pa-2">
+          <v-card v-for="(item, i) in compras" :key="i" class="mb-2 elevation-1">
+            <v-card-text class="py-2 px-3">
+              <v-layout row align-center>
+                <div class="body-2 font-weight-bold">{{ item.num_comprobante }}</div>
+                <v-spacer></v-spacer>
+                <v-chip small label
+                  :color="item.estado === 'CANCELADO' || item.estado === 'Aceptado' ? 'cyan' : item.estado === 'PENDIENTE' ? 'orange' : 'pink'"
+                  text-color="white">
+                  {{ item.estado }}
+                </v-chip>
+              </v-layout>
+              <div class="caption grey--text">{{ item.codigoProducto }} · {{ item.nombreProducto }}</div>
+              <div class="caption grey--text">{{ item.fecha | moment("DD/MM/YYYY") }} · {{ item.bodega }}</div>
+              <v-divider class="my-1"></v-divider>
+              <v-layout row align-center>
+                <v-flex>
+                  <div class="caption grey--text">Usuario</div>
+                  <div class="body-2">{{ item.usuario }}</div>
+                </v-flex>
+                <v-flex shrink class="text-xs-right">
+                  <div class="caption grey--text">Cantidad</div>
+                  <div class="body-2 font-weight-bold">{{ item.cantidad }}</div>
+                </v-flex>
+              </v-layout>
+            </v-card-text>
+          </v-card>
+          <div v-if="!compras.length" class="text-xs-center py-4 grey--text">Sin registros</div>
+        </div>
+        <!-- Desktop table -->
+        <div v-else class="dialog-table-scroll">
+          <v-data-table :headers="tbCompras" :items="compras" class="elevation-1">
+            <template slot="items" slot-scope="props">
+              <td>{{ props.item.num_comprobante }}</td>
+              <td>
+                <v-chip small label
+                  :color="props.item.estado === 'CANCELADO' || props.item.estado === 'Aceptado' ? 'cyan' : props.item.estado === 'PENDIENTE' ? 'orange' : 'pink'"
+                  text-color="white">
                   {{ props.item.estado }}
                 </v-chip>
-              </span>
-              <span v-if="props.item.estado == 'PENDIENTE' ">
-                <v-chip class="ma-2" color="orange" label text-color="white">
-                  <v-icon left> check_circle </v-icon>
-                  {{ props.item.estado }}
-                </v-chip>
-              </span>
-              <span v-if="props.item.estado == 'Anulado'">
-                <v-chip class="ma-2" color="pink" label text-color="white">
-                  <v-icon left> highlight_off </v-icon>
-                  {{ props.item.estado }}
-                </v-chip>
-              </span>
-            </div>
-            <td>{{ props.item.usuario }}</td>
-            <td>{{ props.item.codigoProducto }}</td>
-            <td>{{ props.item.nombreProducto }}</td>
-            <td>
-              {{ props.item.fecha | moment("DD/MM/YYYY") }}
-              <!-- {{ props.item.fecha | moment("LT") }} -->
-            </td>
-            <td>{{ props.item.bodega }}</td>
-            <td>{{ props.item.cantidad }}</td>
-          </template>
-        </v-data-table>
-
+              </td>
+              <td>{{ props.item.usuario }}</td>
+              <td>{{ props.item.codigoProducto }}</td>
+              <td>{{ props.item.nombreProducto }}</td>
+              <td>{{ props.item.fecha | moment("DD/MM/YYYY") }}</td>
+              <td>{{ props.item.bodega }}</td>
+              <td>{{ props.item.cantidad }}</td>
+            </template>
+          </v-data-table>
+        </div>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeCompra"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeCompra">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
     <!--  fin ver Compras -->
     <!-- ver Detalle de Traslado -->
-    <v-dialog v-model="dialogTraslado" max-width="1200px">
+    <v-dialog v-model="dialogTraslado" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="1200px">
       <v-spacer slot="activator"> </v-spacer>
       <v-card>
-        <v-card-title>
-          <span class="headline">Movimientos Traslado </span>
-          <br />
-          <v-icon class="mr-2" color="primary"> move_up </v-icon>
-        </v-card-title>
-
-        <v-data-table
-          :headers="tbTraslados"
-          :items="traslados"
-          class="elevation-1"
-        >
-          <template slot="items" slot-scope="props">
-            <td>{{ props.item.consecutivoTraslado }}</td>
-            <!-- <td>{{ props.item.estado }}</td> -->
-            <div class="text-center">
-              <span v-if="props.item.estado == 'Realizado'">
-                <v-chip class="ma-2" color="cyan" label text-color="white">
-                  <v-icon left> check_circle </v-icon>
+        <v-toolbar flat color="blue darken-2" dark>
+          <v-btn icon dark @click.native="closeTraslado"><v-icon>arrow_back</v-icon></v-btn>
+          <v-icon class="mr-2">move_up</v-icon>
+          <v-toolbar-title>Traslados Internos</v-toolbar-title>
+        </v-toolbar>
+        <!-- Mobile cards -->
+        <div v-if="$vuetify.breakpoint.smAndDown" class="pa-2">
+          <v-card v-for="(item, i) in traslados" :key="i" class="mb-2 elevation-1">
+            <v-card-text class="py-2 px-3">
+              <v-layout row align-center>
+                <div class="body-2 font-weight-bold">{{ item.consecutivoTraslado }}</div>
+                <v-spacer></v-spacer>
+                <v-chip small label :color="item.estado === 'Realizado' ? 'cyan' : 'pink'" text-color="white">
+                  {{ item.estado }}
+                </v-chip>
+              </v-layout>
+              <div class="caption grey--text">{{ item.codigoProducto }} · {{ item.nombreProducto }}</div>
+              <div class="caption grey--text">{{ item.fecha | moment("DD/MM/YYYY") }} · {{ item.usuario }}</div>
+              <v-divider class="my-1"></v-divider>
+              <div class="caption grey--text">
+                {{ item.sucursalOrigen }} <v-icon small>arrow_forward</v-icon> {{ item.sucursalDestino }}
+              </div>
+              <div class="caption mt-1"><span class="grey--text">Cantidad:</span> <strong>{{ item.cantidad }}</strong></div>
+            </v-card-text>
+          </v-card>
+          <div v-if="!traslados.length" class="text-xs-center py-4 grey--text">Sin registros</div>
+        </div>
+        <!-- Desktop table -->
+        <div v-else class="dialog-table-scroll">
+          <v-data-table :headers="tbTraslados" :items="traslados" class="elevation-1">
+            <template slot="items" slot-scope="props">
+              <td>{{ props.item.consecutivoTraslado }}</td>
+              <td>
+                <v-chip small label :color="props.item.estado === 'Realizado' ? 'cyan' : 'pink'" text-color="white">
                   {{ props.item.estado }}
                 </v-chip>
-              </span>
-              <span v-if="props.item.estado == 'Anulado'">
-                <v-chip class="ma-2" color="pink" label text-color="white">
-                  <v-icon left> highlight_off </v-icon>
-                  {{ props.item.estado }}
-                </v-chip>
-              </span>
-            </div>
-            <td>{{ props.item.codigoProducto }}</td>
-            <td>{{ props.item.nombreProducto }}</td>
-            <td>
-              {{ props.item.fecha | moment("DD/MM/YYYY") }}
-              <!-- {{ props.item.fechaHora | moment("LT") }} -->
-            </td>
-            <td>{{ props.item.usuario }}</td>
-            <td>{{ props.item.sucursalOrigen }}</td>
-            <td>{{ props.item.sucursalDestino }}</td>
-            <td>{{ props.item.cantidad }}</td>
-          </template>
-        </v-data-table>
-
+              </td>
+              <td>{{ props.item.codigoProducto }}</td>
+              <td>{{ props.item.nombreProducto }}</td>
+              <td>{{ props.item.fecha | moment("DD/MM/YYYY") }}</td>
+              <td>{{ props.item.usuario }}</td>
+              <td>{{ props.item.sucursalOrigen }}</td>
+              <td>{{ props.item.sucursalDestino }}</td>
+              <td>{{ props.item.cantidad }}</td>
+            </template>
+          </v-data-table>
+        </div>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" flat @click.native="closeTraslado"
-            >Cerrar</v-btn
-          >
+          <v-btn color="blue darken-1" flat @click.native="closeTraslado">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
     <!--  fin ver Traslado -->
+
+    <!-- ver Traslados Empresa -->
+    <v-dialog v-model="dialogTrasladoEmpresa" :fullscreen="$vuetify.breakpoint.smAndDown" max-width="1100px">
+      <v-spacer slot="activator"></v-spacer>
+      <v-card>
+        <v-toolbar flat color="blue darken-2" dark>
+          <v-btn icon dark @click="closeTrasladoEmpresa"><v-icon>arrow_back</v-icon></v-btn>
+          <v-icon class="mr-2">compare_arrows</v-icon>
+          <v-toolbar-title>
+            Traslados entre Empresas
+            <span v-if="articuloActualTraslado" class="body-2 ml-1">— {{ articuloActualTraslado.nombre }}</span>
+          </v-toolbar-title>
+        </v-toolbar>
+        <!-- Mobile cards -->
+        <div v-if="$vuetify.breakpoint.smAndDown" class="pa-2">
+          <v-progress-linear v-if="cargandoTrasladoEmpresa" indeterminate color="blue" class="ma-0"></v-progress-linear>
+          <v-card v-for="(item, i) in trasladosEmpresa" :key="i" class="mb-2 elevation-1">
+            <v-card-text class="py-2 px-3">
+              <v-layout row align-center>
+                <div class="body-2 font-weight-bold">{{ item.numero_traslado }}</div>
+                <v-spacer></v-spacer>
+                <v-chip small label
+                  :color="item.rol === 'saliente' ? 'blue lighten-4' : 'green lighten-4'"
+                  :text-color="item.rol === 'saliente' ? 'blue darken-3' : 'green darken-3'">
+                  <v-icon left small>{{ item.rol === 'saliente' ? 'arrow_upward' : 'arrow_downward' }}</v-icon>
+                  {{ item.rol === 'saliente' ? 'Saliente' : 'Entrante' }}
+                </v-chip>
+              </v-layout>
+              <div class="caption grey--text">{{ item.sucursal_nombre }} · {{ item.creado_en | moment("DD/MM/YYYY") }}</div>
+              <v-divider class="my-1"></v-divider>
+              <v-layout row align-center>
+                <v-flex>
+                  <v-chip small label
+                    :color="item.estado_traslado === 'Completado' ? 'green' : item.estado_traslado === 'Cancelado' ? 'red' : 'orange'"
+                    text-color="white">
+                    {{ item.estado_traslado }}
+                  </v-chip>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Cantidad</div>
+                  <div class="body-2 font-weight-bold">{{ item.cantidad }}</div>
+                </v-flex>
+                <v-flex>
+                  <div class="caption grey--text">Precio Venta</div>
+                  <div class="body-2">{{ item.precio_venta | currency }}</div>
+                </v-flex>
+              </v-layout>
+            </v-card-text>
+          </v-card>
+          <div v-if="!trasladosEmpresa.length && !cargandoTrasladoEmpresa" class="text-xs-center py-4 grey--text">Sin traslados entre empresas</div>
+          <v-layout justify-center class="py-2">
+            <v-pagination
+              v-model="paginacionTrasladoEmpresa.page"
+              :length="Math.ceil(totalTrasladosEmpresa / paginacionTrasladoEmpresa.rowsPerPage) || 1"
+              :total-visible="5"
+            ></v-pagination>
+          </v-layout>
+        </div>
+        <!-- Desktop table -->
+        <div v-else class="dialog-table-scroll">
+        <v-data-table
+          :headers="tbTrasladosEmpresa"
+          :items="trasladosEmpresa"
+          :total-items="totalTrasladosEmpresa"
+          :pagination.sync="paginacionTrasladoEmpresa"
+          :loading="cargandoTrasladoEmpresa"
+          :rows-per-page-items="[5, 10, 25]"
+          class="elevation-1"
+        >
+          <template slot="items" slot-scope="props">
+            <td>{{ props.item.numero_traslado }}</td>
+            <td>
+              <v-chip small label
+                :color="props.item.rol === 'saliente' ? 'blue lighten-4' : 'green lighten-4'"
+                :text-color="props.item.rol === 'saliente' ? 'blue darken-3' : 'green darken-3'">
+                <v-icon left small>{{ props.item.rol === 'saliente' ? 'arrow_upward' : 'arrow_downward' }}</v-icon>
+                {{ props.item.rol === 'saliente' ? 'Saliente' : 'Entrante' }}
+              </v-chip>
+            </td>
+            <td>{{ props.item.sucursal_nombre }}</td>
+            <td>
+              <v-chip small label
+                :color="props.item.estado_traslado === 'Completado' ? 'green' : props.item.estado_traslado === 'Cancelado' ? 'red' : 'orange'"
+                text-color="white">
+                {{ props.item.estado_traslado }}
+              </v-chip>
+            </td>
+            <td>{{ props.item.cantidad }}</td>
+            <td>{{ props.item.precio_venta | currency }}</td>
+            <td>{{ props.item.creado_en | moment("DD/MM/YYYY") }}</td>
+          </template>
+          <template slot="no-data">
+            <div class="text-xs-center pa-3 grey--text">Sin traslados entre empresas para este artículo</div>
+          </template>
+        </v-data-table>
+        </div>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="blue darken-1" flat @click="closeTrasladoEmpresa">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <!-- fin Traslados Empresa -->
   </v-layout>
 </template>
 <style scoped>
+.table-scroll-wrapper,
+.dialog-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .no-spinners input::-webkit-outer-spin-button,
 .no-spinners input::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -450,6 +695,9 @@ export default {
   data() {
     return {
       articulos: [],
+      totalItems: 0,
+      paginacion: { page: 1, rowsPerPage: 10 },
+      cargando: false,
       _stock: [],
       invoices: [],
       compras: [],
@@ -477,6 +725,7 @@ export default {
         { text: "Factura", value: "invoice", sortable: false },
         { text: "Compras", value: "compras", sortable: false },
         { text: "Traslados", value: "traslados", sortable: false },
+        { text: "T. Empresa", value: "traslado_empresa", sortable: false },
         { text: "Precio Compra", value: "precio_compra", sortable: false },
         { text: "Precio Venta", value: "precio_venta", sortable: false },
         { text: "Descripción", value: "descripcion", sortable: false },
@@ -520,8 +769,24 @@ export default {
         { text: "Bodega Destino", value: "SucursalDestino", sortable: false },
         { text: "Cantidad", value: "detalleVentaCantidad", sortable: false },
       ],
+      dialogTrasladoEmpresa: false,
+      trasladosEmpresa: [],
+      totalTrasladosEmpresa: 0,
+      paginacionTrasladoEmpresa: { page: 1, rowsPerPage: 5 },
+      cargandoTrasladoEmpresa: false,
+      articuloActualTraslado: null,
+      tbTrasladosEmpresa: [
+        { text: "No. Traslado", value: "numero_traslado", sortable: false },
+        { text: "Dirección", value: "rol", sortable: false },
+        { text: "Sucursal", value: "sucursal_nombre", sortable: false },
+        { text: "Estado", value: "estado_traslado", sortable: false },
+        { text: "Cantidad", value: "cantidad", sortable: false },
+        { text: "Precio Venta", value: "precio_venta", sortable: false },
+        { text: "Fecha", value: "creado_en", sortable: false },
+      ],
       categoria: 0,
       search: "",
+      debounceTimer: null,
       editedIndex: -1,
       id: "",
       idcategoria: "",
@@ -571,20 +836,19 @@ export default {
   },
 
   watch: {
-    dialog(val) {
-      val || this.close();
+    dialog(val) { val || this.close(); },
+    dialogStock(val) { val || this.close(); },
+    dialogInvoice(val) { val || this.close(); },
+    dialogCompra(val) { val || this.close(); },
+    dialogTraslado(val) { val || this.close(); },
+    dialogTrasladoEmpresa(val) { val || this.closeTrasladoEmpresa(); },
+    'paginacionTrasladoEmpresa.page'() { this.cargarTrasladosEmpresa(); },
+    'paginacionTrasladoEmpresa.rowsPerPage'() {
+      if (this.paginacionTrasladoEmpresa.page !== 1) { this.paginacionTrasladoEmpresa.page = 1; } else { this.cargarTrasladosEmpresa(); }
     },
-    dialogStock(val) {
-      val || this.close();
-    },
-    dialogInvoice(val) {
-      val || this.close();
-    },
-    dialogCompra(val) {
-      val || this.close();
-    },
-    dialogTraslado(val) {
-      val || this.close();
+    'paginacion.page'() { this.listar(); },
+    'paginacion.rowsPerPage'() {
+      if (this.paginacion.page !== 1) { this.paginacion.page = 1; } else { this.listar(); }
     },
   },
 
@@ -729,6 +993,42 @@ export default {
       this.dialogTraslado = false;
       this.limpiar();
     },
+    showTrasladoEmpresaByArticle(item) {
+      this.articuloActualTraslado = item;
+      this.trasladosEmpresa = [];
+      this.totalTrasladosEmpresa = 0;
+      this.dialogTrasladoEmpresa = true;
+      if (this.paginacionTrasladoEmpresa.page !== 1) {
+        this.paginacionTrasladoEmpresa.page = 1;
+      } else {
+        this.cargarTrasladosEmpresa();
+      }
+    },
+    cargarTrasladosEmpresa() {
+      if (!this.articuloActualTraslado) return;
+      var me = this;
+      me.cargandoTrasladoEmpresa = true;
+      var cfg = {
+        headers: { Authorization: 'Bearer ' + me.$store.state.token },
+        params: { pagina: me.paginacionTrasladoEmpresa.page, porPagina: me.paginacionTrasladoEmpresa.rowsPerPage }
+      };
+      axios.get('api/TrasladosEmpresa/MovimientosArticulo/' + me.articuloActualTraslado.idarticulo, cfg)
+        .then(function (r) {
+          me.cargandoTrasladoEmpresa = false;
+          me.trasladosEmpresa = r.data.movimientos || [];
+          me.totalTrasladosEmpresa = r.data.total || 0;
+        })
+        .catch(function (err) {
+          me.cargandoTrasladoEmpresa = false;
+          if (err.response && err.response.status == '401') {
+            swal('Sesión caducada', 'Su sesión ha expirado favor volver a iniciar sesión', 'warning');
+          }
+        });
+    },
+    closeTrasladoEmpresa() {
+      this.dialogTrasladoEmpresa = false;
+      this.articuloActualTraslado = null;
+    },
 
     crearExcel() {
       var rows = [];
@@ -808,45 +1108,32 @@ export default {
     },
 
     listar() {
-      let me = this;
-      let header = { Authorization: "Bearer " + this.$store.state.token };
-      let configuracion = { headers: header };
-      axios
-        .get("api/Articulos/Listar/" + me.categoria, configuracion)
+      var me = this;
+      me.cargando = true;
+      var params = { pagina: me.paginacion.page, porPagina: me.paginacion.rowsPerPage };
+      if (me.categoria && me.categoria !== 0) params.idCategoria = me.categoria;
+      if (me.search) params.nombre = me.search;
+      var cfg = { headers: { Authorization: 'Bearer ' + me.$store.state.token }, params: params };
+      axios.get('api/Articulos/Buscar', cfg)
         .then(function (response) {
-          //console.log(response);
-          me.articulos = response.data;
-
-          //console.log(me.articulos);
-          me.articulos.map(function (x) {
-            rows.push({
-              nombre: x.nombre,
-              codigo: x.codigo,
-              categoria: x.categoria,
-              stock: x.stock,
-              precio_compra: x.precio_compra,
-              precio_venta: x.precio_venta,
-              utilidad: (x.precio_venta - x.precio_compra) * x.stock,
-              costo: x.precio_compra * x.stock,
-            });
-          });
+          me.cargando = false;
+          me.articulos = response.data.articulos || [];
+          me.totalItems = response.data.total || 0;
         })
         .catch(function (error) {
-          // console.log(error);
-          console.log("Probando" + error.response.status);
-          if (error.response.status == "401") {
-            //alert("Nice");
-            swal(
-              "Sesión caducada",
-              "Su sesión ha expirado favor volver a iniciar sesión",
-              "warning"
-            );
+          me.cargando = false;
+          if (error.response && error.response.status == '401') {
+            swal('Sesión caducada', 'Su sesión ha expirado favor volver a iniciar sesión', 'warning');
             me.redirigir();
-
-            //router.push("login");
-            // ation.href = "http://localhost8080/login";
           }
         });
+    },
+    buscarDebounce() {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => { this.buscar(); }, 400);
+    },
+    buscar() {
+      if (this.paginacion.page !== 1) { this.paginacion.page = 1; } else { this.listar(); }
     },
     redirigir() {
       // this.$router.push({ name: "login" });

@@ -147,6 +147,22 @@
                 <v-list-tile-title> Anular Traslados </v-list-tile-title>
               </v-list-tile-content>
             </v-list-tile>
+            <v-list-tile v-if="esAdministrador || esAlmacenero" :to="{ name: 'trasladosempresa' }">
+              <v-list-tile-action>
+                <v-icon>swap_horiz</v-icon>
+              </v-list-tile-action>
+              <v-list-tile-content>
+                <v-list-tile-title> Traslados Empresa </v-list-tile-title>
+              </v-list-tile-content>
+            </v-list-tile>
+            <v-list-tile v-if="esAdministrador || esAlmacenero" :to="{ name: 'trasladoempresaexcepciones' }">
+              <v-list-tile-action>
+                <v-icon>report_problem</v-icon>
+              </v-list-tile-action>
+              <v-list-tile-content>
+                <v-list-tile-title> Excepciones Zona </v-list-tile-title>
+              </v-list-tile-content>
+            </v-list-tile>
              <v-list-tile v-if="esAdministrador" :to="{ name: 'abonos' }">
               <v-list-tile-action>
                 <v-icon>attach_money</v-icon>
