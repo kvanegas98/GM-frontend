@@ -1539,6 +1539,16 @@ export default {
         detalle.lineNum = index + 1;
       });
 
+      // Calcular totales directamente desde detalles — nunca confiar en data properties
+      // actualizadas por efectos secundarios del template para datos financieros críticos
+      const _subtotal = me.detalles.reduce((sum, det) => {
+        return sum + (parseFloat(det.precio) * parseFloat(det.cantidad) - parseFloat(det.descuento || 0));
+      }, 0);
+      const _totalCalculado = parseFloat(_subtotal) + parseFloat(me.impuesto || 0);
+      const _totalDolar = parseFloat(me.tasacambio) > 0
+        ? _totalCalculado / parseFloat(me.tasacambio)
+        : 0;
+
       let localStorage = {
         idusuario: me.userId,
         idcliente: me.customer,
@@ -1574,12 +1584,12 @@ export default {
             idsucursal: me.idbodega,
             tipo_comprobante: me.tipocomprobante,
             impuesto: me.impuesto,
-            total: me.total,
+            total: _totalCalculado,
             nombrecliente: me.nombrecliente,
             _telefono: me.telefono,
             departamento: me.departamento,
             tipoEnvio: me.tipo_envio,
-            totalDolar: me.totalDolar,
+            totalDolar: _totalDolar,
             tasaCambio: me.tasacambio,
             detalles: me.detalles,
           },
